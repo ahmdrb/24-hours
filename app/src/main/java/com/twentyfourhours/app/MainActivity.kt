@@ -135,17 +135,19 @@ private fun PlannerApp() {
     val today = LocalDate.now()
     val yesterday = today.minusDays(1)
     val tomorrow = today.plusDays(1)
-    val dayLabel = when (selectedDate) {
-        today -> "TODAY"
-        yesterday -> "YESTERDAY"
-        tomorrow -> "TOMORROW"
-        else -> "DAY PLANNER"
+    val dayLabel = when {
+        selectedDate == today -> "TODAY"
+        selectedDate == yesterday -> "YESTERDAY"
+        selectedDate == tomorrow -> "TOMORROW"
+        selectedDate.isBefore(yesterday) -> "PAST DAY"
+        else -> "FUTURE DAY"
     }
-    val planHeading = when (selectedDate) {
-        today -> "TODAY'S PLAN"
-        yesterday -> "YESTERDAY'S PLAN"
-        tomorrow -> "TOMORROW'S PLAN"
-        else -> "DAY'S PLAN"
+    val planHeading = when {
+        selectedDate == today -> "TODAY'S PLAN"
+        selectedDate == yesterday -> "YESTERDAY'S PLAN"
+        selectedDate == tomorrow -> "TOMORROW'S PLAN"
+        selectedDate.isBefore(yesterday) -> "PAST DAY'S PLAN"
+        else -> "FUTURE DAY'S PLAN"
     }
     val isToday = selectedDate == today
 
@@ -338,7 +340,7 @@ private fun ActivityRow(block: ActivityBlock, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "${timeLabel(block.start)} – ${timeLabel(block.end)}${if (block.end >= 1440) " · NEXT DAY" else ""}",
+                "${timeLabel(block.start)} – ${timeLabel(block.end)}",
                 color = foreground.copy(alpha = 0.76f),
                 fontSize = 11.sp,
             )
@@ -493,7 +495,7 @@ private fun ActivityEditor(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     TimeButton("START", timeLabel(start), Modifier.weight(1f)) { pickTime(true) }
                     Text("—", color = TextMuted)
-                    TimeButton("END", timeLabel(end) + if (end >= 1440) " · NEXT DAY" else "", Modifier.weight(1f)) { pickTime(false) }
+                    TimeButton("END", timeLabel(end), Modifier.weight(1f)) { pickTime(false) }
                 }
 
                 Text("COLOR", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
