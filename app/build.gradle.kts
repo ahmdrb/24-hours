@@ -26,7 +26,8 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2026.11.01")
+    // Compose 1.11 / BOM 2026.04.01 supports compileSdk 36.
+    val composeBom = platform("androidx.compose:compose-bom:2026.04.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
