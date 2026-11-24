@@ -8,6 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -15,6 +17,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,8 +42,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.Instant
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
@@ -56,8 +63,12 @@ private val TextMuted = Color(0xFF858B98)
 private val Accent = Color(0xFFB7A6FF)
 private val RingTrack = Color(0xFF292C33)
 private val Palette = listOf(
+    // Original seven
     Color(0xFF83D6B1), Color(0xFF83B8F5), Color(0xFFF0BD78),
     Color(0xFFC1A0F5), Color(0xFFF08D9A), Color(0xFF78C8D2), Color(0xFFAAB2BE),
+    // Seven new colors
+    Color(0xFFFFD166), Color(0xFFE89A74), Color(0xFFC06C84),
+    Color(0xFF6F9E8A), Color(0xFF558E9B), Color(0xFF7584BC), Color(0xFFA58D72),
 )
 
 private data class ActivityBlock(
@@ -66,6 +77,7 @@ private data class ActivityBlock(
     val start: Int,
     val end: Int,
     val color: String,
+    val subactivities: List<String> = emptyList(),
 )
 
 class MainActivity : ComponentActivity() {
@@ -82,10 +94,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun PlannerApp() {
     val context = LocalContext.current
-    val activities = remember { mutableStateListOf<ActivityBlock>().apply { addAll(loadActivities(context)) } }
-    LaunchedEffect(activities.toList()) { saveActivities(context, activities) }
+    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    val activities = remember(selectedDate) {
+        mutableStateListOf<ActivityBlock>().apply { addAll(loadActivities(context, selectedDate)) }
+    }
 
     var editorOpen by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<ActivityBlock?>(null) }
     var suggestedStart by remember { mutableIntStateOf(6 * 60) }
     var suggestedEnd by remember { mutableIntStateOf(7 * 60) }
@@ -103,8 +118,15 @@ private fun PlannerApp() {
         editorOpen = true
     }
 
+    fun persistUpdatedActivities(updated: List<ActivityBlock>) {
+        activities.clear()
+        activities.addAll(updated)
+        saveActivities(context, selectedDate, updated)
+    }
+
     val planned = activities.sumOf { it.end - it.start }.coerceIn(0, 1440)
     val free = 1440 - planned
+    val isToday = selectedDate == LocalDate.now()
 
     MaterialTheme(colorScheme = darkColorScheme(
         primary = Accent, onPrimary = Color(0xFF17131F), background = Background,
@@ -112,20 +134,54 @@ private fun PlannerApp() {
     )) {
         Surface(Modifier.fillMaxSize(), color = Background) {
             Column(
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 24.dp),
+                Modifier.fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 22.dp, vertical = 18.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("YOUR DAY", color = Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.2.sp)
-                        Text(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault())), color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                        Text(if (isToday) "YOUR DAY" else "DAY PLANNER", color = Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.2.sp)
+                        Row(
+                            Modifier.clip(RoundedCornerShape(9.dp)).clickable { showDatePicker = true }.padding(vertical = 3.dp, horizontal = 1.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        ) {
+                            Text(selectedDate.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault())), color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                            Icon(Icons.Default.CalendarMonth, contentDescription = "Choose date", tint = TextMuted, modifier = Modifier.size(18.dp))
+                        }
                     }
                     Text("24 HOURS", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.8.sp)
                 }
                 Spacer(Modifier.height(16.dp))
 
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    DayDial(activities = activities, onTap = ::editAt)
+                Box(
+                    Modifier.fillMaxWidth().pointerInput(selectedDate) {
+                        var dragDistance = 0f
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { change, amount ->
+                                dragDistance += amount
+                                change.consume()
+                            },
+                            onDragEnd = {
+                                val threshold = 56.dp.toPx()
+                                if (dragDistance > threshold) {
+                                    selectedDate = selectedDate.plusDays(1)
+                                    editorOpen = false
+                                } else if (dragDistance < -threshold) {
+                                    selectedDate = selectedDate.minusDays(1)
+                                    editorOpen = false
+                                }
+                                dragDistance = 0f
+                            },
+                            onDragCancel = { dragDistance = 0f },
+                        )
+                    },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    DayDial(activities = activities, showCurrentTime = isToday, onTap = ::editAt)
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("YOUR DAY", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.7.sp)
                         Spacer(Modifier.height(3.dp))
@@ -150,7 +206,7 @@ private fun PlannerApp() {
 
                 Spacer(Modifier.height(25.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("TODAY'S PLAN", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    Text(if (isToday) "TODAY'S PLAN" else "DAY'S PLAN", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Text("${activities.size} ${if (activities.size == 1) "activity" else "activities"}", color = TextMuted, fontSize = 11.sp)
                 }
                 Spacer(Modifier.height(10.dp))
@@ -182,8 +238,31 @@ private fun PlannerApp() {
                     Text("＋  Add activity", color = Color(0xFF17131F), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 }
                 Spacer(Modifier.height(10.dp))
-                Text("A simple plan for all 24 hours.", color = TextMuted, fontSize = 11.sp)
+                Text("Swipe the clock to change days.", color = TextMuted, fontSize = 11.sp)
             }
+        }
+    }
+
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = selectedDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        selectedDate = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                        editorOpen = false
+                    }
+                    showDatePicker = false
+                }) { Text("Done", color = Accent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel", color = TextMuted) }
+            },
+        ) {
+            DatePicker(state = datePickerState)
         }
     }
 
@@ -195,11 +274,16 @@ private fun PlannerApp() {
             allActivities = activities.toList(),
             onDismiss = { editorOpen = false },
             onSave = { updated ->
-                val index = activities.indexOfFirst { it.id == updated.id }
-                if (index >= 0) activities[index] = updated else activities.add(updated)
+                val next = activities.toMutableList()
+                val index = next.indexOfFirst { it.id == updated.id }
+                if (index >= 0) next[index] = updated else next.add(updated)
+                persistUpdatedActivities(next)
                 editorOpen = false
             },
-            onDelete = { id -> activities.removeAll { it.id == id }; editorOpen = false },
+            onDelete = { id ->
+                persistUpdatedActivities(activities.filterNot { it.id == id })
+                editorOpen = false
+            },
         )
     }
 }
@@ -223,14 +307,17 @@ private fun ActivityRow(block: ActivityBlock, onClick: () -> Unit) {
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(block.title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${timeLabel(block.start)} – ${timeLabel(block.end)}${if (block.end >= 1440) " · NEXT DAY" else ""}", color = TextMuted, fontSize = 11.sp)
+            Text(
+                "${timeLabel(block.start)} – ${timeLabel(block.end)}${if (block.end >= 1440) " · NEXT DAY" else ""}${if (block.subactivities.isNotEmpty()) " · ${block.subactivities.size} steps" else ""}",
+                color = TextMuted, fontSize = 11.sp
+            )
         }
         Text(duration(block.end - block.start), color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
-private fun DayDial(activities: List<ActivityBlock>, onTap: (Int) -> Unit) {
+private fun DayDial(activities: List<ActivityBlock>, showCurrentTime: Boolean, onTap: (Int) -> Unit) {
     Canvas(
         Modifier.fillMaxWidth().widthIn(max = 320.dp).aspectRatio(1f).pointerInput(activities) {
             detectTapGestures { tap ->
@@ -292,12 +379,14 @@ private fun DayDial(activities: List<ActivityBlock>, onTap: (Int) -> Unit) {
             )
         }
 
-        val now = LocalTime.now()
-        val nowAngle = Math.toRadians((-90f + (now.hour * 60 + now.minute) / 1440f * 360f).toDouble())
-        val dotRadius = radius + stroke / 2f + 2.dp.toPx()
-        val dot = Offset(center.x + cos(nowAngle).toFloat() * dotRadius, center.y + sin(nowAngle).toFloat() * dotRadius)
-        drawCircle(Background, 5.dp.toPx(), dot)
-        drawCircle(TextPrimary, 3.dp.toPx(), dot)
+        if (showCurrentTime) {
+            val now = LocalTime.now()
+            val nowAngle = Math.toRadians((-90f + (now.hour * 60 + now.minute) / 1440f * 360f).toDouble())
+            val dotRadius = radius + stroke / 2f + 2.dp.toPx()
+            val dot = Offset(center.x + cos(nowAngle).toFloat() * dotRadius, center.y + sin(nowAngle).toFloat() * dotRadius)
+            drawCircle(Background, 5.dp.toPx(), dot)
+            drawCircle(TextPrimary, 3.dp.toPx(), dot)
+        }
     }
 }
 
@@ -306,8 +395,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.activityArc(
 ) {
     if (duration <= 0) return
     val sweep = duration / 1440f * 360f
-    val gap = min(1.3f, sweep / 4f)
-    drawArc(color, -90f + start / 1440f * 360f + gap, max(0.5f, sweep - gap * 2f), false, topLeft, size, style = Stroke(stroke, cap = StrokeCap.Round))
+    drawArc(color, -90f + start / 1440f * 360f, sweep, false, topLeft, size, style = Stroke(stroke, cap = StrokeCap.Butt))
 }
 
 @Composable
@@ -320,6 +408,8 @@ private fun ActivityEditor(
     var start by remember(existing?.id, initialStart) { mutableIntStateOf(initialStart) }
     var end by remember(existing?.id, initialEnd) { mutableIntStateOf(initialEnd) }
     var selectedColor by remember(existing?.id) { mutableStateOf(parseColor(existing?.color ?: colorHex(Palette.first()))) }
+    var subactivities by remember(existing?.id, initialStart) { mutableStateOf(existing?.subactivities ?: emptyList()) }
+    var subactivityInput by remember(existing?.id, initialStart) { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun pickTime(isStart: Boolean) {
@@ -339,10 +429,29 @@ private fun ActivityEditor(
         onDismissRequest = onDismiss, containerColor = Raised,
         title = { Text(if (existing == null) "New activity" else "Edit activity", color = TextPrimary, fontWeight = FontWeight.SemiBold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(
+                Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
                 OutlinedTextField(
-                    value = title, onValueChange = { title = it; error = null }, modifier = Modifier.fillMaxWidth(),
-                    singleLine = true, label = { Text("Activity name") }, placeholder = { Text("e.g. Exercise") },
+                    value = title,
+                    onValueChange = { title = it; error = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Activity name") },
+                    placeholder = { Text("e.g. Exercise") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        disabledTextColor = TextMuted,
+                        cursorColor = Accent,
+                        focusedBorderColor = Accent,
+                        unfocusedBorderColor = RingTrack,
+                        focusedLabelColor = Accent,
+                        unfocusedLabelColor = TextMuted,
+                        focusedPlaceholderColor = TextMuted,
+                        unfocusedPlaceholderColor = TextMuted,
+                    ),
                 )
                 Text("TIME", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -350,14 +459,70 @@ private fun ActivityEditor(
                     Text("—", color = TextMuted)
                     TimeButton("END", timeLabel(end) + if (end >= 1440) " · NEXT DAY" else "", Modifier.weight(1f)) { pickTime(false) }
                 }
+
                 Text("COLOR", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Palette.forEach { color ->
-                        Box(
-                            Modifier.size(30.dp).clip(CircleShape).background(color)
-                                .then(if (selectedColor == color) Modifier.padding(3.dp).background(TextPrimary, CircleShape).padding(2.dp).background(color, CircleShape) else Modifier)
-                                .clickable { selectedColor = color },
-                        )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Palette.chunked(7).forEach { rowColors ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            rowColors.forEach { color ->
+                                Box(
+                                    Modifier.size(32.dp).clip(CircleShape).background(color)
+                                        .then(if (selectedColor == color) Modifier.border(2.dp, TextPrimary, CircleShape) else Modifier)
+                                        .clickable { selectedColor = color },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Divider(color = RingTrack)
+                Text("SUBACTIVITIES", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                Text("Smaller steps that belong to this activity.", color = TextMuted, fontSize = 11.sp)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = subactivityInput,
+                        onValueChange = { subactivityInput = it },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        label = { Text("Subactivity") },
+                        placeholder = { Text("e.g. Warm up") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            cursorColor = Accent,
+                            focusedBorderColor = Accent,
+                            unfocusedBorderColor = RingTrack,
+                            focusedLabelColor = Accent,
+                            unfocusedLabelColor = TextMuted,
+                            focusedPlaceholderColor = TextMuted,
+                            unfocusedPlaceholderColor = TextMuted,
+                        ),
+                    )
+                    TextButton(onClick = {
+                        val clean = subactivityInput.trim()
+                        if (clean.isNotEmpty() && clean !in subactivities) {
+                            subactivities = subactivities + clean
+                            subactivityInput = ""
+                        }
+                    }) { Text("Add", color = Accent) }
+                }
+                if (subactivities.isEmpty()) {
+                    Text("No subactivities added yet.", color = TextMuted, fontSize = 11.sp)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        subactivities.forEach { subactivity ->
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SurfaceDark).padding(start = 12.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(Modifier.size(6.dp).clip(CircleShape).background(selectedColor))
+                                Spacer(Modifier.width(9.dp))
+                                Text(subactivity, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { subactivities = subactivities - subactivity }) {
+                                    Text("Remove", color = TextMuted, fontSize = 11.sp)
+                                }
+                            }
+                        }
                     }
                 }
                 error?.let { Text(it, color = Color(0xFFFF9AA7), fontSize = 11.sp) }
@@ -371,7 +536,7 @@ private fun ActivityEditor(
                     end <= start -> error = "The end time must be after the start time."
                     end - start > 1440 -> error = "An activity can last up to 24 hours."
                     allActivities.any { it.id != existing?.id && overlaps(start, end, it) } -> error = "That time overlaps another activity."
-                    else -> onSave(ActivityBlock(existing?.id ?: System.currentTimeMillis(), clean, start, end, colorHex(selectedColor)))
+                    else -> onSave(ActivityBlock(existing?.id ?: System.currentTimeMillis(), clean, start, end, colorHex(selectedColor), subactivities))
                 }
             }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
                 Text("Save", color = Color(0xFF17131F), fontWeight = FontWeight.SemiBold)
@@ -420,24 +585,70 @@ private fun duration(total: Int): String {
 private fun colorHex(color: Color): String = String.format(Locale.US, "#%06X", 0xFFFFFF and color.toArgb())
 private fun parseColor(value: String): Color = try { Color(AndroidColor.parseColor(value)) } catch (_: Exception) { Palette.first() }
 
-private fun loadActivities(context: Context): List<ActivityBlock> {
-    val raw = context.getSharedPreferences("twenty_four_hours", Context.MODE_PRIVATE).getString("activities", "[]") ?: "[]"
+private fun loadActivities(context: Context, date: LocalDate): List<ActivityBlock> {
+    val preferences = context.getSharedPreferences("twenty_four_hours", Context.MODE_PRIVATE)
+    val dateKey = "activities_${date}"
+    var raw = preferences.getString(dateKey, null)
+
+    // Preserve the schedule made in the first app version by assigning it to today's date.
+    if (raw == null && date == LocalDate.now()) {
+        raw = preferences.getString("activities", null)
+        if (raw != null) {
+            preferences.edit().putString(dateKey, raw).remove("activities").apply()
+        }
+    }
+
+    if (raw.isNullOrBlank()) return emptyList()
     return try {
         val array = JSONArray(raw)
         buildList {
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
-                add(ActivityBlock(item.optLong("id", System.currentTimeMillis() + i), item.optString("title", "Activity"), item.optInt("start", 0), item.optInt("end", 60), item.optString("color", colorHex(Palette.first()))))
+                val subArray = item.optJSONArray("subactivities")
+                val subs = buildList {
+                    if (subArray != null) {
+                        for (j in 0 until subArray.length()) {
+                            val sub = subArray.optString(j).trim()
+                            if (sub.isNotEmpty()) add(sub)
+                        }
+                    }
+                }
+                add(
+                    ActivityBlock(
+                        item.optLong("id", System.currentTimeMillis() + i),
+                        item.optString("title", "Activity"),
+                        item.optInt("start", 0),
+                        item.optInt("end", 60),
+                        item.optString("color", colorHex(Palette.first())),
+                        subs,
+                    )
+                )
             }
         }.filter { it.title.isNotBlank() && it.start in 0..1439 && it.end > it.start && it.end - it.start <= 1440 }
             .sortedBy { it.start }
-    } catch (_: Exception) { emptyList() }
+    } catch (_: Exception) {
+        emptyList()
+    }
 }
 
-private fun saveActivities(context: Context, activities: List<ActivityBlock>) {
+private fun saveActivities(context: Context, date: LocalDate, activities: List<ActivityBlock>) {
     val json = JSONArray()
     activities.sortedBy { it.start }.forEach { item ->
-        json.put(JSONObject().put("id", item.id).put("title", item.title).put("start", item.start).put("end", item.end).put("color", item.color))
+        val subJson = JSONArray()
+        item.subactivities.forEach { subJson.put(it) }
+        json.put(
+            JSONObject()
+                .put("id", item.id)
+                .put("title", item.title)
+                .put("start", item.start)
+                .put("end", item.end)
+                .put("color", item.color)
+                .put("subactivities", subJson)
+        )
     }
-    context.getSharedPreferences("twenty_four_hours", Context.MODE_PRIVATE).edit().putString("activities", json.toString()).apply()
+    context.getSharedPreferences("twenty_four_hours", Context.MODE_PRIVATE)
+        .edit()
+        .putString("activities_${date}", json.toString())
+        .apply()
 }
+
