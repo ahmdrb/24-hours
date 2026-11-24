@@ -466,17 +466,21 @@ private fun DayDial(
         }
 
         // Draw ticks after the activity arcs so they remain crisp and visible.
-        // Their short strokes occupy a dedicated inner-edge band; the hour numbers
-        // sit farther outward in their own zone, away from the tick ends.
-        val tickInner = radius - stroke * 0.5f + 1.dp.toPx()
+        // All marks start at the inner border (where the ring meets the center)
+        // and extend outward. Major marks span almost the full 32dp band, medium
+        // marks stop before the label lane, and minor marks stay short and precise.
+        val tickInner = radius - stroke * 0.5f + 0.5.dp.toPx()
+        val majorTickLength = stroke - 1.5.dp.toPx()
+        val mediumTickLength = stroke * 0.50f
+        val minorTickLength = stroke * 0.28f
         for (minute in 0 until 1440 step 5) {
             val isHour = minute % 60 == 0
             val isQuarter = minute % 15 == 0
             val angle = Math.toRadians((-90f + minute / 1440f * 360f).toDouble())
             val tickLength = when {
-                isHour -> 12.dp.toPx()
-                isQuarter -> 7.dp.toPx()
-                else -> 4.dp.toPx()
+                isHour -> majorTickLength
+                isQuarter -> mediumTickLength
+                else -> minorTickLength
             }
             val outer = tickInner + tickLength
             val segment = activities.firstOrNull { contains(it, minute) }
@@ -491,9 +495,9 @@ private fun DayDial(
             } else {
                 Color(0xFFB0B4BE).copy(
                     alpha = when {
-                        isHour -> 0.78f
-                        isQuarter -> 0.62f
-                        else -> 0.48f
+                        isHour -> 0.82f
+                        isQuarter -> 0.66f
+                        else -> 0.52f
                     }
                 )
             }
@@ -503,9 +507,9 @@ private fun DayDial(
                 Offset(center.x + cos(angle).toFloat() * tickInner, center.y + sin(angle).toFloat() * tickInner),
                 Offset(center.x + cos(angle).toFloat() * outer, center.y + sin(angle).toFloat() * outer),
                 strokeWidth = when {
-                    isHour -> 1.65.dp.toPx()
-                    isQuarter -> 1.10.dp.toPx()
-                    else -> 0.80.dp.toPx()
+                    isHour -> 1.85.dp.toPx()
+                    isQuarter -> 1.20.dp.toPx()
+                    else -> 0.90.dp.toPx()
                 },
                 cap = StrokeCap.Butt,
             )
@@ -518,6 +522,7 @@ private fun DayDial(
             textSize = 10.sp.toPx()
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
         }
+        // Keep numbers on the mid/outer side of the band; medium and minor ticks end inside this lane.
         val labelRadius = radius + 4.dp.toPx()
         listOf(0, 3, 6, 9, 12, 15, 18, 21).forEach { hour ->
             val angle = Math.toRadians((-90f + hour * 15f).toDouble())
