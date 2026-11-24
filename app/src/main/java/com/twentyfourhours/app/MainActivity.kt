@@ -56,6 +56,7 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -589,7 +590,7 @@ private fun SubactivityPill(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(11.dp))
             .background(color)
-            .pointerInput(isEditing, text) {
+            .pointerInput(isEditing) {
                 var dragDistance = 0f
                 detectHorizontalDragGestures(
                     onHorizontalDrag = { change, amount ->
@@ -646,8 +647,16 @@ private fun SubactivityPill(
 }
 
 private fun readableTextColor(background: Color): Color {
-    val luminance = 0.2126f * background.red + 0.7152f * background.green + 0.0722f * background.blue
-    return if (luminance > 0.52f) Color(0xFF1B1C21) else Color.White
+    fun linearize(channel: Float): Float =
+        if (channel <= 0.04045f) channel / 12.92f
+        else ((channel + 0.055f) / 1.055f).pow(2.4f)
+
+    val luminance = 0.2126f * linearize(background.red) +
+        0.7152f * linearize(background.green) +
+        0.0722f * linearize(background.blue)
+
+    // Pick the higher-contrast foreground at the WCAG black/white crossover.
+    return if (luminance > 0.179f) Color(0xFF1B1C21) else Color.White
 }
 
 @Composable
