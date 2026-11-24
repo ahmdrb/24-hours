@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.twentyfourhours.app"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.twentyfourhours.app"
