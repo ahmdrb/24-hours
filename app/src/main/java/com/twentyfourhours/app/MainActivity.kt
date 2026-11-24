@@ -147,6 +147,15 @@ private fun PlannerApp() {
         editorOpen = true
     }
 
+    fun addActivity() {
+        // Always open a fresh activity editor, never edit an existing block.
+        val start = nextFreeMinute(activities)
+        selected = null
+        suggestedStart = start
+        suggestedEnd = min(start + 60, 1440)
+        editorOpen = true
+    }
+
     fun persistUpdatedActivities(updated: List<ActivityBlock>) {
         activities.clear()
         activities.addAll(updated)
@@ -281,7 +290,14 @@ private fun PlannerApp() {
                 }
 
                 Spacer(Modifier.height(25.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { addActivity() }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(planHeading, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                 }
                 Spacer(Modifier.height(10.dp))
@@ -303,15 +319,6 @@ private fun PlannerApp() {
                     }
                 }
 
-                Spacer(Modifier.height(17.dp))
-                Button(
-                    onClick = { editAt(nextFreeMinute(activities)) },
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                ) {
-                    Text("＋  Add activity", color = Color(0xFF17131F), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                }
                 Spacer(Modifier.height(10.dp))
             }
         }
