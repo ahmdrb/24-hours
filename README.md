@@ -24,7 +24,7 @@ The easiest way to get an APK is from GitHub Actions:
 3. Select **Run workflow** (or push a commit to `main`).
 4. Download the `24-hours-debug-apk` artifact from the completed run.
 
-To build locally, use Android Studio with JDK 17+, Android SDK Platform 37, and Gradle 9.6.0. Then run `gradle assembleDebug` from the project root. The APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
+To build locally, use Android Studio with JDK 17+, Android SDK Platform 36, and Gradle 9.6.0. Then run `gradle assembleDebug` from the project root. The APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Project details
 
