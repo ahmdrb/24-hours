@@ -67,12 +67,31 @@ private val Raised = Color(0xFF20232A)
 private val TextPrimary = Color(0xFFF4F3F7)
 private val TextMuted = Color(0xFF858B98)
 private val Accent = Color(0xFFB7A6FF)
-private val RingTrack = Color(0xFF292C33)
+private val RingTrack = Color(0xFF202124)
+
+// Rich jewel tones used consistently by the activity picker, cards, and clock ring.
 private val Palette = listOf(
-    // Original seven
+    Color(0xFF167B83), // Deep teal
+    Color(0xFF356FA8), // Ocean blue
+    Color(0xFF9B702F), // Antique amber
+    Color(0xFF694A9B), // Deep violet
+    Color(0xFFA64E68), // Muted rose
+    Color(0xFF43858A), // Muted cyan
+    Color(0xFF66717E), // Slate
+    Color(0xFFA17A2D), // Ochre
+    Color(0xFFAC6245), // Terracotta
+    Color(0xFF824A68), // Plum
+    Color(0xFF34785B), // Forest green
+    Color(0xFF25677D), // Deep cyan
+    Color(0xFF4B579A), // Indigo
+    Color(0xFF80654B), // Warm brown
+)
+
+// Existing saved activities keep their original color values. Map those known palette
+// colors to the corresponding new jewel tone so existing schedules inherit the redesign.
+private val LegacyPalette = listOf(
     Color(0xFF83D6B1), Color(0xFF83B8F5), Color(0xFFF0BD78),
     Color(0xFFC1A0F5), Color(0xFFF08D9A), Color(0xFF78C8D2), Color(0xFFAAB2BE),
-    // Seven new colors
     Color(0xFFFFD166), Color(0xFFE89A74), Color(0xFFC06C84),
     Color(0xFF6F9E8A), Color(0xFF558E9B), Color(0xFF7584BC), Color(0xFFA58D72),
 )
@@ -203,10 +222,24 @@ private fun PlannerApp() {
                     },
                     contentAlignment = Alignment.Center,
                 ) {
-                    DayDial(activities = activities, onTap = ::editAt)
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("24", color = TextPrimary, fontSize = 48.sp, lineHeight = 50.sp, fontWeight = FontWeight.Light)
+                    DayDial(activities = activities, showCurrentTime = isToday, onTap = ::editAt)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Text("☾", color = Color(0xFF9699FF), fontSize = 17.sp, lineHeight = 19.sp)
+                        Text(
+                            selectedDate.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, Locale.getDefault())
+                                .uppercase(Locale.getDefault()),
+                            color = TextPrimary,
+                            fontSize = 14.sp,
+                            lineHeight = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.7.sp,
+                        )
+                        Text("24", color = TextPrimary, fontSize = 48.sp, lineHeight = 49.sp, fontWeight = FontWeight.Light)
                         Text("HOURS", color = TextMuted, fontSize = 10.sp, letterSpacing = 2.4.sp, fontWeight = FontWeight.Medium)
+                        Text("☀", color = Color(0xFFFFD166), fontSize = 16.sp, lineHeight = 18.sp)
                     }
                 }
 
@@ -363,7 +396,7 @@ private fun ActivityRow(block: ActivityBlock, onClick: () -> Unit) {
 }
 
 @Composable
-private fun DayDial(activities: List<ActivityBlock>, onTap: (Int) -> Unit) {
+private fun DayDial(activities: List<ActivityBlock>, showCurrentTime: Boolean, onTap: (Int) -> Unit) {
     Canvas(
         Modifier.fillMaxWidth().widthIn(max = 320.dp).aspectRatio(1f).pointerInput(activities) {
             detectTapGestures { tap ->
@@ -386,7 +419,12 @@ private fun DayDial(activities: List<ActivityBlock>, onTap: (Int) -> Unit) {
         val stroke = 24.dp.toPx()
         val topLeft = Offset(center.x - radius, center.y - radius)
         val arcSize = Size(radius * 2f, radius * 2f)
-        drawArc(RingTrack, -90f, 360f, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+
+        // Charcoal unplanned time and sharp, flat-ended activity segments.
+        drawArc(
+            RingTrack, -90f, 360f, false, topLeft, arcSize,
+            style = Stroke(stroke, cap = StrokeCap.Butt),
+        )
 
         activities.forEach { item ->
             val color = parseColor(item.color)
@@ -396,35 +434,109 @@ private fun DayDial(activities: List<ActivityBlock>, onTap: (Int) -> Unit) {
             if (remainder > 0) activityArc(color, 0, remainder, topLeft, arcSize, stroke)
         }
 
-        for (hour in 0 until 24) {
-            val angle = Math.toRadians((-90f + hour * 15f).toDouble())
-            val inner = radius + stroke * 0.58f
-            val outer = inner + if (hour % 6 == 0) 9.dp.toPx() else 4.dp.toPx()
+        // Five-minute graduations; 15-minute and hourly ticks are stronger.
+        // Tick tint follows the activity occupying that time, or the charcoal track.
+        for (minute in 0 until 1440 step 5) {
+            val isHour = minute % 60 == 0
+            val isQuarter = minute % 15 == 0
+            val angle = Math.toRadians((-90f + minute / 1440f * 360f).toDouble())
+            val inner = radius + stroke * 0.5f + 2.dp.toPx()
+            val tickLength = when {
+                isHour -> 10.dp.toPx()
+                isQuarter -> 7.dp.toPx()
+                else -> 3.2.dp.toPx()
+            }
+            val outer = inner + tickLength
+            val segment = activities.firstOrNull { contains(it, minute) }
+            val baseColor = segment?.let { parseColor(it.color) } ?: Color(0xFF85868D)
+            val tickColor = baseColor.copy(
+                alpha = when {
+                    isHour -> 0.95f
+                    isQuarter -> 0.70f
+                    else -> if (segment != null) 0.48f else 0.38f
+                }
+            )
             drawLine(
-                if (hour % 6 == 0) Color(0xFF777D89) else Color(0xFF444852),
+                tickColor,
                 Offset(center.x + cos(angle).toFloat() * inner, center.y + sin(angle).toFloat() * inner),
                 Offset(center.x + cos(angle).toFloat() * outer, center.y + sin(angle).toFloat() * outer),
-                strokeWidth = if (hour % 6 == 0) 1.7.dp.toPx() else 1.dp.toPx(), cap = StrokeCap.Round,
+                strokeWidth = when {
+                    isHour -> 1.55.dp.toPx()
+                    isQuarter -> 1.05.dp.toPx()
+                    else -> 0.75.dp.toPx()
+                },
+                cap = StrokeCap.Butt,
             )
         }
 
-        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            color = AndroidColor.rgb(155, 160, 172)
+        // Three-hour labels placed on the centerline of the ring.
+        val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = AndroidColor.rgb(238, 238, 242)
             textAlign = android.graphics.Paint.Align.CENTER
             textSize = 10.sp.toPx()
-            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
         }
-        val labelRadius = radius + stroke * 0.5f + 22.dp.toPx()
-        listOf(0, 6, 12, 18).forEach { hour ->
+        listOf(0, 3, 6, 9, 12, 15, 18, 21).forEach { hour ->
             val angle = Math.toRadians((-90f + hour * 15f).toDouble())
             drawContext.canvas.nativeCanvas.drawText(
                 String.format(Locale.US, "%02d", hour),
-                center.x + cos(angle).toFloat() * labelRadius,
-                center.y + sin(angle).toFloat() * labelRadius + 3.5.dp.toPx(),
-                paint,
+                center.x + cos(angle).toFloat() * radius,
+                center.y + sin(angle).toFloat() * radius + 3.5.dp.toPx(),
+                labelPaint,
             )
         }
 
+        // A fine radial line crosses only the ring band, with a compact white time pill.
+        if (showCurrentTime) {
+            val now = LocalTime.now()
+            val currentMinute = now.hour * 60 + now.minute
+            val angleDegrees = -90f + currentMinute / 1440f * 360f
+            val angle = Math.toRadians(angleDegrees.toDouble())
+            val cosAngle = cos(angle).toFloat()
+            val sinAngle = sin(angle).toFloat()
+
+            val lineInner = radius - stroke * 0.5f - 1.dp.toPx()
+            val lineOuter = radius + stroke * 0.5f + 13.dp.toPx()
+            drawLine(
+                Color.White,
+                Offset(center.x + cosAngle * lineInner, center.y + sinAngle * lineInner),
+                Offset(center.x + cosAngle * lineOuter, center.y + sinAngle * lineOuter),
+                strokeWidth = 1.5.dp.toPx(),
+                cap = StrokeCap.Butt,
+            )
+
+            val timeText = String.format(Locale.US, "%02d:%02d", now.hour, now.minute)
+            val pillPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = AndroidColor.WHITE
+                textAlign = android.graphics.Paint.Align.CENTER
+                textSize = 9.sp.toPx()
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+            }
+            val pillHeight = 18.dp.toPx()
+            val pillWidth = pillPaint.measureText(timeText) + 12.dp.toPx()
+            val desiredRadius = radius + stroke * 0.5f + 25.dp.toPx()
+            val pillCenterX = (center.x + cosAngle * desiredRadius)
+                .coerceIn(pillWidth / 2f + 2.dp.toPx(), size.width - pillWidth / 2f - 2.dp.toPx())
+            val pillCenterY = (center.y + sinAngle * desiredRadius)
+                .coerceIn(pillHeight / 2f + 2.dp.toPx(), size.height - pillHeight / 2f - 2.dp.toPx())
+            val pillRect = android.graphics.RectF(
+                pillCenterX - pillWidth / 2f,
+                pillCenterY - pillHeight / 2f,
+                pillCenterX + pillWidth / 2f,
+                pillCenterY + pillHeight / 2f,
+            )
+            drawContext.canvas.nativeCanvas.drawRoundRect(
+                pillRect, pillHeight / 2f, pillHeight / 2f, pillPaint,
+            )
+            val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = AndroidColor.rgb(25, 26, 30)
+                textAlign = android.graphics.Paint.Align.CENTER
+                textSize = 9.sp.toPx()
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+            }
+            val baseline = pillCenterY - (textPaint.ascent() + textPaint.descent()) / 2f
+            drawContext.canvas.nativeCanvas.drawText(timeText, pillCenterX, baseline, textPaint)
+        }
     }
 }
 
@@ -693,7 +805,13 @@ private fun duration(total: Int): String {
 }
 
 private fun colorHex(color: Color): String = String.format(Locale.US, "#%06X", 0xFFFFFF and color.toArgb())
-private fun parseColor(value: String): Color = try { Color(AndroidColor.parseColor(value)) } catch (_: Exception) { Palette.first() }
+private fun parseColor(value: String): Color = try {
+    val parsed = Color(AndroidColor.parseColor(value))
+    val legacyIndex = LegacyPalette.indexOfFirst { it.toArgb() == parsed.toArgb() }
+    if (legacyIndex in Palette.indices) Palette[legacyIndex] else parsed
+} catch (_: Exception) {
+    Palette.first()
+}
 
 private fun loadActivities(context: Context, date: LocalDate): List<ActivityBlock> {
     val preferences = context.getSharedPreferences("twenty_four_hours", Context.MODE_PRIVATE)
