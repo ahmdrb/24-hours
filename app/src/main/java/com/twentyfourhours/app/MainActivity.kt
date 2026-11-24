@@ -239,7 +239,7 @@ private fun DayDial(activities: List<ActivityBlock>, onTap: (Int) -> Unit) {
                 val dx = tap.x - cx
                 val dy = tap.y - cy
                 val distance = sqrt(dx * dx + dy * dy)
-                val radius = size.minDimension * 0.36f
+                val radius = minOf(size.width, size.height).toFloat() * 0.36f
                 if (distance in (radius * 0.66f)..(radius * 1.35f)) {
                     val degrees = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
                     val clockAngle = (degrees + 90f + 360f) % 360f
