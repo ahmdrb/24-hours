@@ -51,6 +51,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -129,6 +130,9 @@ private fun PlannerApp() {
     var selected by remember { mutableStateOf<ActivityBlock?>(null) }
     var suggestedStart by remember { mutableIntStateOf(6 * 60) }
     var suggestedEnd by remember { mutableIntStateOf(7 * 60) }
+    var currentMinute by remember {
+        mutableIntStateOf(LocalTime.now().let { it.hour * 60 + it.minute })
+    }
 
     fun editAt(minute: Int) {
         val found = activities.firstOrNull { contains(it, minute) }
@@ -169,6 +173,16 @@ private fun PlannerApp() {
         else -> "FUTURE DAY'S PLAN"
     }
     val isToday = selectedDate == today
+
+    LaunchedEffect(isToday) {
+        if (isToday) {
+            while (true) {
+                val now = LocalTime.now()
+                currentMinute = now.hour * 60 + now.minute
+                delay(1_000L)
+            }
+        }
+    }
 
     MaterialTheme(colorScheme = darkColorScheme(
         primary = Accent, onPrimary = Color(0xFF17131F), background = Background,
@@ -222,23 +236,34 @@ private fun PlannerApp() {
                     },
                     contentAlignment = Alignment.Center,
                 ) {
-                    DayDial(activities = activities, showCurrentTime = isToday, onTap = ::editAt)
+                    DayDial(
+                        activities = activities,
+                        showCurrentTime = isToday,
+                        currentMinute = currentMinute,
+                        onTap = ::editAt,
+                    )
                     Column(
+                        Modifier.fillMaxWidth(0.56f).aspectRatio(1f),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                        verticalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text("☾", color = Color(0xFF9699FF), fontSize = 17.sp, lineHeight = 19.sp)
-                        Text(
-                            selectedDate.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, Locale.getDefault())
-                                .uppercase(Locale.getDefault()),
-                            color = TextPrimary,
-                            fontSize = 14.sp,
-                            lineHeight = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.7.sp,
-                        )
-                        Text("24", color = TextPrimary, fontSize = 48.sp, lineHeight = 49.sp, fontWeight = FontWeight.Light)
-                        Text("HOURS", color = TextMuted, fontSize = 10.sp, letterSpacing = 2.4.sp, fontWeight = FontWeight.Medium)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(
+                                selectedDate.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, Locale.getDefault())
+                                    .uppercase(Locale.getDefault()),
+                                color = TextPrimary,
+                                fontSize = 14.sp,
+                                lineHeight = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.7.sp,
+                            )
+                            Text("24", color = TextPrimary, fontSize = 48.sp, lineHeight = 49.sp, fontWeight = FontWeight.Light)
+                            Text("HOURS", color = TextMuted, fontSize = 10.sp, letterSpacing = 2.4.sp, fontWeight = FontWeight.Medium)
+                        }
                         Text("☀", color = Color(0xFFFFD166), fontSize = 16.sp, lineHeight = 18.sp)
                     }
                 }
@@ -396,7 +421,12 @@ private fun ActivityRow(block: ActivityBlock, onClick: () -> Unit) {
 }
 
 @Composable
-private fun DayDial(activities: List<ActivityBlock>, showCurrentTime: Boolean, onTap: (Int) -> Unit) {
+private fun DayDial(
+    activities: List<ActivityBlock>,
+    showCurrentTime: Boolean,
+    currentMinute: Int,
+    onTap: (Int) -> Unit,
+) {
     Canvas(
         Modifier.fillMaxWidth().widthIn(max = 320.dp).aspectRatio(1f).pointerInput(activities) {
             detectTapGestures { tap ->
@@ -434,31 +464,32 @@ private fun DayDial(activities: List<ActivityBlock>, showCurrentTime: Boolean, o
             if (remainder > 0) activityArc(color, 0, remainder, topLeft, arcSize, stroke)
         }
 
-        // Five-minute graduations; 15-minute and hourly ticks are stronger.
-        // Tick tint follows the activity occupying that time, or the charcoal track.
+        // Tick marks now sit wholly inside the ring band instead of protruding
+        // into the surrounding background. Five-minute marks are short; quarters
+        // and hours reach progressively farther toward the ring's outer edge.
+        val tickInner = radius - stroke * 0.5f + 1.dp.toPx()
         for (minute in 0 until 1440 step 5) {
             val isHour = minute % 60 == 0
             val isQuarter = minute % 15 == 0
             val angle = Math.toRadians((-90f + minute / 1440f * 360f).toDouble())
-            val inner = radius + stroke * 0.5f + 2.dp.toPx()
             val tickLength = when {
-                isHour -> 10.dp.toPx()
-                isQuarter -> 7.dp.toPx()
-                else -> 3.2.dp.toPx()
+                isHour -> stroke - 2.dp.toPx()
+                isQuarter -> 12.dp.toPx()
+                else -> 5.dp.toPx()
             }
-            val outer = inner + tickLength
+            val outer = tickInner + tickLength
             val segment = activities.firstOrNull { contains(it, minute) }
             val baseColor = segment?.let { parseColor(it.color) } ?: Color(0xFF85868D)
             val tickColor = baseColor.copy(
                 alpha = when {
-                    isHour -> 0.95f
-                    isQuarter -> 0.70f
-                    else -> if (segment != null) 0.48f else 0.38f
+                    isHour -> 0.98f
+                    isQuarter -> 0.76f
+                    else -> if (segment != null) 0.52f else 0.40f
                 }
             )
             drawLine(
                 tickColor,
-                Offset(center.x + cos(angle).toFloat() * inner, center.y + sin(angle).toFloat() * inner),
+                Offset(center.x + cos(angle).toFloat() * tickInner, center.y + sin(angle).toFloat() * tickInner),
                 Offset(center.x + cos(angle).toFloat() * outer, center.y + sin(angle).toFloat() * outer),
                 strokeWidth = when {
                     isHour -> 1.55.dp.toPx()
@@ -469,7 +500,7 @@ private fun DayDial(activities: List<ActivityBlock>, showCurrentTime: Boolean, o
             )
         }
 
-        // Three-hour labels placed on the centerline of the ring.
+        // Three-hour labels remain clean and legible around the centerline.
         val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             color = AndroidColor.rgb(238, 238, 242)
             textAlign = android.graphics.Paint.Align.CENTER
@@ -486,10 +517,11 @@ private fun DayDial(activities: List<ActivityBlock>, showCurrentTime: Boolean, o
             )
         }
 
-        // A fine radial line crosses only the ring band, with a compact white time pill.
+        // Both the indicator line and pill use the same minute state, refreshed
+        // from LocalTime every second by PlannerApp while today's plan is visible.
         if (showCurrentTime) {
-            val now = LocalTime.now()
-            val currentMinute = now.hour * 60 + now.minute
+            val hour = (currentMinute / 60).coerceIn(0, 23)
+            val minute = currentMinute % 60
             val angleDegrees = -90f + currentMinute / 1440f * 360f
             val angle = Math.toRadians(angleDegrees.toDouble())
             val cosAngle = cos(angle).toFloat()
@@ -505,7 +537,7 @@ private fun DayDial(activities: List<ActivityBlock>, showCurrentTime: Boolean, o
                 cap = StrokeCap.Butt,
             )
 
-            val timeText = String.format(Locale.US, "%02d:%02d", now.hour, now.minute)
+            val timeText = String.format(Locale.US, "%02d:%02d", hour, minute)
             val pillPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                 color = AndroidColor.WHITE
                 textAlign = android.graphics.Paint.Align.CENTER
