@@ -128,8 +128,8 @@ private fun PlannerApp() {
     var editorOpen by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<ActivityBlock?>(null) }
-    var suggestedStart by remember { mutableIntStateOf(6 * 60) }
-    var suggestedEnd by remember { mutableIntStateOf(7 * 60) }
+    var suggestedStart by remember { mutableIntStateOf(0) }
+    var suggestedEnd by remember { mutableIntStateOf(60) }
     var currentMinute by remember {
         mutableIntStateOf(LocalTime.now().let { it.hour * 60 + it.minute })
     }
@@ -205,7 +205,7 @@ private fun PlannerApp() {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(7.dp),
                         ) {
-                            Text(selectedDate.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault())), color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                            Text(selectedDate.format(DateTimeFormatter.ofPattern("d MMMM", Locale.getDefault())), color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Medium)
                             Icon(Icons.Default.CalendarMonth, contentDescription = "Choose date", tint = TextMuted, modifier = Modifier.size(18.dp))
                         }
                     }
@@ -841,11 +841,12 @@ private fun TimeButton(label: String, value: String, modifier: Modifier = Modifi
 }
 
 private fun nextFreeMinute(items: List<ActivityBlock>): Int {
+    // For an unassigned new activity, begin with midnight and find the first free hour.
     for (offset in 0 until 24) {
-        val minute = ((6 + offset) % 24) * 60
+        val minute = offset * 60
         if (items.none { contains(it, minute) }) return minute
     }
-    return 6 * 60
+    return 0
 }
 
 private fun contains(block: ActivityBlock, minute: Int): Boolean = ((minute - block.start + 1440) % 1440) < (block.end - block.start)
