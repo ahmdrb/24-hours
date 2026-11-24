@@ -2,6 +2,8 @@
 
 A deliberately simple Android daily planner built around one circular 24-hour clock.
 
+The project is configured to build a debug APK automatically on every push to `main` through GitHub Actions.
+
 ## First version
 
 - A circular clock showing midnight through the full 24-hour day.
