@@ -205,8 +205,8 @@ private fun PlannerApp() {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(7.dp),
                         ) {
-                            Text(selectedDate.format(DateTimeFormatter.ofPattern("d MMMM", Locale.getDefault())), color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Medium)
                             Icon(Icons.Default.CalendarMonth, contentDescription = "Choose date", tint = TextMuted, modifier = Modifier.size(18.dp))
+                            Text(selectedDate.format(DateTimeFormatter.ofPattern("d MMMM", Locale.getDefault())), color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
