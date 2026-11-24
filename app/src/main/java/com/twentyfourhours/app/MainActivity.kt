@@ -435,8 +435,8 @@ private fun DayDial(
                 val dx = tap.x - cx
                 val dy = tap.y - cy
                 val distance = sqrt(dx * dx + dy * dy)
-                val radius = minOf(size.width, size.height).toFloat() * 0.36f
-                if (distance in (radius * 0.66f)..(radius * 1.35f)) {
+                val radius = minOf(size.width, size.height).toFloat() * 0.39f
+                if (distance in (radius * 0.80f)..(radius * 1.20f)) {
                     val degrees = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
                     val clockAngle = (degrees + 90f + 360f) % 360f
                     onTap(((clockAngle / 360f) * 1440f).roundToInt().coerceIn(0, 1439))
@@ -445,8 +445,9 @@ private fun DayDial(
         },
     ) {
         val center = Offset(size.width / 2f, size.height / 2f)
-        val radius = size.minDimension * 0.36f
-        val stroke = 24.dp.toPx()
+        // Larger, fuller proportions inspired by the reference dial.
+        val radius = size.minDimension * 0.39f
+        val stroke = 32.dp.toPx()
         val topLeft = Offset(center.x - radius, center.y - radius)
         val arcSize = Size(radius * 2f, radius * 2f)
 
@@ -464,55 +465,66 @@ private fun DayDial(
             if (remainder > 0) activityArc(color, 0, remainder, topLeft, arcSize, stroke)
         }
 
-        // Tick marks now sit wholly inside the ring band instead of protruding
-        // into the surrounding background. Five-minute marks are short; quarters
-        // and hours reach progressively farther toward the ring's outer edge.
+        // Draw ticks after the activity arcs so they remain crisp and visible.
+        // Their short strokes occupy a dedicated inner-edge band; the hour numbers
+        // sit farther outward in their own zone, away from the tick ends.
         val tickInner = radius - stroke * 0.5f + 1.dp.toPx()
         for (minute in 0 until 1440 step 5) {
             val isHour = minute % 60 == 0
             val isQuarter = minute % 15 == 0
             val angle = Math.toRadians((-90f + minute / 1440f * 360f).toDouble())
             val tickLength = when {
-                isHour -> stroke - 2.dp.toPx()
-                isQuarter -> 12.dp.toPx()
-                else -> 5.dp.toPx()
+                isHour -> 12.dp.toPx()
+                isQuarter -> 7.dp.toPx()
+                else -> 4.dp.toPx()
             }
             val outer = tickInner + tickLength
             val segment = activities.firstOrNull { contains(it, minute) }
-            val baseColor = segment?.let { parseColor(it.color) } ?: Color(0xFF85868D)
-            val tickColor = baseColor.copy(
-                alpha = when {
-                    isHour -> 0.98f
-                    isQuarter -> 0.76f
-                    else -> if (segment != null) 0.52f else 0.40f
+            val tickColor = if (segment != null) {
+                val activityColor = parseColor(segment.color)
+                val tint = when {
+                    isHour -> 0.70f
+                    isQuarter -> 0.56f
+                    else -> 0.42f
                 }
-            )
+                lightenForTick(activityColor, tint).copy(alpha = 0.98f)
+            } else {
+                Color(0xFFB0B4BE).copy(
+                    alpha = when {
+                        isHour -> 0.78f
+                        isQuarter -> 0.62f
+                        else -> 0.48f
+                    }
+                )
+            }
+
             drawLine(
                 tickColor,
                 Offset(center.x + cos(angle).toFloat() * tickInner, center.y + sin(angle).toFloat() * tickInner),
                 Offset(center.x + cos(angle).toFloat() * outer, center.y + sin(angle).toFloat() * outer),
                 strokeWidth = when {
-                    isHour -> 1.55.dp.toPx()
-                    isQuarter -> 1.05.dp.toPx()
-                    else -> 0.75.dp.toPx()
+                    isHour -> 1.65.dp.toPx()
+                    isQuarter -> 1.10.dp.toPx()
+                    else -> 0.80.dp.toPx()
                 },
                 cap = StrokeCap.Butt,
             )
         }
 
-        // Three-hour labels remain clean and legible around the centerline.
+        // Three-hour labels occupy a separate outer radial zone within the band.
         val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             color = AndroidColor.rgb(238, 238, 242)
             textAlign = android.graphics.Paint.Align.CENTER
             textSize = 10.sp.toPx()
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
         }
+        val labelRadius = radius + 4.dp.toPx()
         listOf(0, 3, 6, 9, 12, 15, 18, 21).forEach { hour ->
             val angle = Math.toRadians((-90f + hour * 15f).toDouble())
             drawContext.canvas.nativeCanvas.drawText(
                 String.format(Locale.US, "%02d", hour),
-                center.x + cos(angle).toFloat() * radius,
-                center.y + sin(angle).toFloat() * radius + 3.5.dp.toPx(),
+                center.x + cos(angle).toFloat() * labelRadius,
+                center.y + sin(angle).toFloat() * labelRadius + 3.5.dp.toPx(),
                 labelPaint,
             )
         }
@@ -570,6 +582,16 @@ private fun DayDial(
             drawContext.canvas.nativeCanvas.drawText(timeText, pillCenterX, baseline, textPaint)
         }
     }
+}
+
+private fun lightenForTick(color: Color, amount: Float): Color {
+    val tint = amount.coerceIn(0f, 1f)
+    return Color(
+        red = color.red + (1f - color.red) * tint,
+        green = color.green + (1f - color.green) * tint,
+        blue = color.blue + (1f - color.blue) * tint,
+        alpha = color.alpha,
+    )
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.activityArc(
